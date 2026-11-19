@@ -9,7 +9,7 @@ A Claude-style desktop chat app for Windows, built on the [FreeLLMAPI](https://g
 | Platform | File | Notes |
 | --- | --- | --- |
 | Windows 10/11 (x64) | [ClaudeCode-Setup-0.16.34.exe](https://github.com/thecreativerihan-star/free-claude-code/releases/download/v0.16.34/ClaudeCode-Setup-0.16.34.exe) | One-click installer |
-| Windows 10/11 (x64) | [Claude Code-Portable-0.16.34.zip](https://github.com/thecreativerihan-star/free-claude-code/releases/download/v0.16.34/Claude%20Code-Portable-0.16.34.zip) | Unzip and run `Claude Code.exe` — no install needed |
+| Windows 10/11 (x64) | [Claude.Code-Portable-0.16.34.zip](https://github.com/thecreativerihan-star/free-claude-code/releases/download/v0.16.34/Claude.Code-Portable-0.16.34.zip) | Unzip and run `Claude Code.exe` — no install needed |
 
 All builds: [Releases](https://github.com/thecreativerihan-star/free-claude-code/releases)
 
