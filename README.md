@@ -1,6 +1,6 @@
 # Free Claude Code
 
-A Claude-style desktop chat app for Windows, built on the [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) engine. This build keeps the engine as it is and replaces the chat experience: dark/orange theme, Helvetica type, a real Claude-orange icon, chat history, mic dictation and a renameable chat heading.
+Free Claude Code is a free, open-source Claude-style desktop chat app for Windows, built on the [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) engine. Looking for a free Claude Code alternative for Windows? This build keeps the engine as it is and replaces the chat experience: dark/orange theme, Helvetica type, a real Claude-orange icon, chat history, mic dictation and a renameable chat heading.
 
 > **Independent build.** It is not made by, affiliated with, or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic PBC; the names are used here only to describe the look and feel of this interface.
 
