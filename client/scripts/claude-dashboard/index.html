@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script>
+      try {
+        // Mirrors the ThemeProvider's resolution: 'system' (or nothing stored)
+        // follows the OS preference. Keep in sync with src/theme.tsx.
+        const theme = localStorage.getItem('theme')
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        const dark = theme === 'dark' || (theme !== 'light' && prefersDark)
+        if (dark) {
+          document.documentElement.classList.add('dark')
+        }
+        document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        document.documentElement.dataset.themeChoice =
+          theme === 'dark' || theme === 'light' ? theme : 'system'
+        // Same idea for text direction; keep in sync with RTL_LOCALES in
+        // src/i18n/locale-config.ts.
+        const locale = localStorage.getItem('freellmapi.locale')
+        if (locale && ['ar', 'he', 'fa', 'ur'].includes(locale)) {
+          document.documentElement.dir = 'rtl'
+        }
+      } catch {
+        // Keep the initial render working if localStorage is unavailable.
+      }
+    </script>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<title>Claude Code</title>
+<style>
+  :root{
+    --bg:#fcfcfb; --side:#f4f2ee; --panel:#ffffff; --text:#0b0b0b; --muted:#6b6864;
+    --border:#e7e4df; --accent:#ba5b3c; --accent-2:#a44d31; --accent-soft:#f7ece6;
+    --bubble:#f0eee9; --code:#262625; --code-txt:#e8e4de; --green:#3f7a5a;
+    --send:#191919; --send-fg:#ffffff;
+    --font:'Helvetica Neue',Helvetica,Inter,Arial,sans-serif;
+    --shadow:0 1px 2px rgba(11,11,11,.05),0 8px 26px rgba(11,11,11,.04);
+    --sb-thumb:rgba(11,11,11,.22); --sb-hover:rgba(11,11,11,.38);
+  }
+  html.dark{
+    --bg:#1f1f1f; --side:#262625; --panel:#2a2a29; --text:#f2f0ec; --muted:#a3a09b;
+    --border:#3b3b38; --accent:#d97757; --accent-2:#e88a6b; --accent-soft:#3a2a22;
+    --bubble:#30302e; --code:#141413; --code-txt:#e8e4de; --green:#7fbf9a;
+    --send:#f2f0ec; --send-fg:#1f1f1f;
+    --shadow:0 8px 26px rgba(0,0,0,.28);
+    --sb-thumb:rgba(255,255,255,.20); --sb-hover:rgba(255,255,255,.34);
+  }
+  /* slim, subtle scrollbars: transparent track + translucent thumb only */
+  *{box-sizing:border-box;scrollbar-width:thin;scrollbar-color:var(--sb-thumb) transparent}
+  ::-webkit-scrollbar{width:5px;height:5px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--sb-thumb);border-radius:99px}
+  ::-webkit-scrollbar-thumb:hover{background:var(--sb-hover)}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  button,input,textarea{font:inherit}
+  .app{display:flex;height:100vh;overflow:hidden}
+
+  /* ---------- SIDEBAR ---------- */
+  .side{
+    width:262px;flex:none;background:var(--side);border-right:1px solid var(--border);
+    padding:14px 10px 10px;display:flex;flex-direction:column;overflow:hidden;
+    transition:width .22s ease,padding .22s ease,opacity .18s ease;
+  }
+  body.collapsed .side{width:0;padding-left:0;padding-right:0;border-right:0;opacity:0;pointer-events:none}
+  .side-head{display:flex;align-items:center;justify-content:space-between;padding:5px 8px 18px}
+  .brand{display:flex;align-items:center;gap:10px;white-space:nowrap}
+  .star{width:24px;height:24px;color:var(--accent);flex:none}
+  .brand b{font-size:16px;font-weight:650;letter-spacing:-.02em}
+  .hide{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:17px;padding:4px 7px;border-radius:7px}
+  .hide:hover{background:var(--accent-soft);color:var(--text)}
+  .newchat{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--border);background:var(--panel);color:var(--text);padding:9px 12px;border-radius:9px;cursor:pointer;font-size:13px;margin-bottom:14px;text-align:left}
+  .newchat:hover{border-color:var(--accent)}
+  .s-item{display:flex;align-items:center;gap:11px;padding:8px 11px;border-radius:8px;color:var(--muted);cursor:pointer;font-size:13px;white-space:nowrap}
+  .s-item:hover{background:var(--accent-soft);color:var(--text)}
+  .s-item.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow);font-weight:600}
+  .sec{color:var(--muted);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;margin:16px 11px 5px;font-family:var(--font)}
+  .chat-item{padding:8px 11px;border-radius:8px;color:var(--muted);font-size:13px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chat-item:hover{background:var(--accent-soft);color:var(--text)}
+  .chat-item.active{background:var(--panel);color:var(--text);box-shadow:var(--shadow);font-weight:600}
+  .chat-line{display:flex;align-items:center;gap:2px;border-radius:8px}
+  .chat-line.active{background:var(--panel);box-shadow:var(--shadow)}
+  .chat-line:hover .chat-acts{opacity:1}
+  .chat-line .chat-item{flex:1;min-width:0}
+  .chat-acts{display:flex;gap:1px;opacity:0;transition:opacity .15s;padding-right:4px}
+  .chat-acts button{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:3px 4px;border-radius:5px}
+  .chat-acts button:hover{background:var(--accent-soft);color:var(--accent)}
+  .chat-acts button.pinned{color:var(--accent);opacity:1}
+  .chat-line.pinned .chat-item::before{content:'📌 ';font-size:10px}
+  .chat-rename{flex:1;min-width:0;border:1px solid var(--accent);background:var(--bg);color:var(--text);border-radius:6px;padding:4px 6px;font-size:12px;outline:0}
+  .ico{width:17px;text-align:center;flex:none;display:grid;place-items:center}
+  .side-foot{margin-top:auto;border-top:1px solid var(--border);padding:12px 10px 2px;color:var(--muted);font-size:12px;display:flex;align-items:center;gap:8px;white-space:nowrap}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block}
+
+  /* ---------- MAIN ---------- */
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{height:56px;flex:none;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 18px}
+  .menu{border:0;background:transparent;color:var(--muted);cursor:pointer;padding:6px;border-radius:7px;display:grid;place-items:center}
+  .menu:hover{background:var(--accent-soft);color:var(--text)}
+  .top-title{font-size:15px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em}
+  .view{flex:1;overflow:auto;display:none}
+  .view.on{display:flex;flex-direction:column}
+  /* Settings embeds the ORIGINAL React dashboard verbatim, unchanged. */
+  .dash-frame{display:none;flex:1;width:100%;border:0;background:var(--bg);min-height:0}
+  #v-settings.embed .dash-frame{display:block}
+  #v-settings.embed .panel{display:none}
+
+  /* ---------- CHAT ---------- */
+  .thread{flex:1;overflow:auto;padding:38px 20px 16px}
+  .th-in{max-width:740px;margin:0 auto}
+  .u{width:fit-content;max-width:80%;background:var(--bubble);border-radius:16px;border-bottom-right-radius:5px;padding:10px 14px;margin:0 0 30px auto;font-size:14px;line-height:1.5;display:table}
+  .a{margin-bottom:30px;animation:softin .14s ease both}
+  .a .body{font-size:15px;line-height:1.75;color:var(--text)}
+  .a p{margin:0 0 14px}
+  .a strong{font-weight:650}
+  .tool{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--muted);margin-bottom:15px}
+  .tool b{color:var(--accent);font-weight:600}
+  pre{background:var(--code);color:var(--code-txt);border-radius:11px;padding:15px 17px;overflow:auto;font:12.5px/1.65 ui-monospace,Consolas,monospace;margin:14px 0 16px}
+  pre .c{color:#8d8a85}pre .s{color:#a8c9a2}
+
+  .comp-wrap{flex:none;padding:0 20px 16px;background:linear-gradient(to top,var(--bg) 72%,transparent)}
+  .comp{max-width:740px;margin:0 auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:12px 12px 10px;box-shadow:var(--shadow);position:relative}
+  .comp textarea{width:100%;border:0;outline:0;resize:none;background:transparent;color:var(--text);font-size:14px;min-height:42px;line-height:1.5;padding:2px 4px}
+  .comp textarea::placeholder{color:var(--muted)}
+  .crow{display:flex;align-items:center;gap:8px;margin-top:6px}
+  .plus,.mic{width:30px;height:30px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+  .plus:hover,.mic:hover{border-color:var(--accent);color:var(--accent)}
+  .plus.on,.mic.on{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .model-wrap{position:relative;margin-left:auto}
+  .model-btn{display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:999px;padding:5px 10px;font-size:12px;cursor:pointer}
+  .model-btn:hover{color:var(--text);border-color:var(--accent)}
+  .menu-model{display:none;position:absolute;bottom:38px;right:0;width:288px;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:6px;z-index:20}
+  .menu-model.open{display:block}
+  .msearch{width:100%;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:8px;padding:7px 9px;font-size:12px;outline:0;margin-bottom:4px}
+  .mnote{color:var(--muted);font-size:10.5px;padding:0 9px 6px}
+  .mlist{max-height:290px;overflow:auto}
+  .m-opt{padding:7px 9px;border-radius:8px;font-size:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .m-opt:hover{background:var(--accent-soft)}
+  .m-opt.sel{color:var(--accent);font-weight:600}
+  .m-opt small{color:var(--muted);font-size:10.5px;flex:none}
+  .send{width:32px;height:32px;border-radius:50%;background:var(--send);color:var(--send-fg);border:0;display:grid;place-items:center;cursor:pointer;flex:none}
+  .a.typing .body{min-height:22px}
+  .u{white-space:pre-wrap}
+  .typing-dots{display:inline-flex;align-items:center;gap:5px;height:22px}
+  .typing-dots i{width:6px;height:6px;border-radius:50%;background:var(--muted);display:block;animation:tdot 1.1s infinite ease-in-out}
+  .typing-dots i:nth-child(2){animation-delay:.16s}
+  .typing-dots i:nth-child(3){animation-delay:.32s}
+  @keyframes tdot{0%,60%,100%{opacity:.25;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+  .attachments{display:flex;flex-wrap:wrap;gap:6px;padding:0 3px 6px}
+  .attachments:empty{display:none}
+  .att{position:relative;border:1px solid var(--border);border-radius:8px;padding:4px 7px;font-size:11px;color:var(--muted);background:var(--bg);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .att img{max-height:34px;max-width:70px;display:block;border-radius:5px;margin-bottom:3px}
+  .att b{position:absolute;top:-5px;right:-5px;background:var(--panel);border:1px solid var(--border);border-radius:50%;width:16px;height:16px;display:grid;place-items:center;cursor:pointer;font-size:10px;color:var(--text)}
+  .u img.att-img{display:block;max-width:220px;max-height:160px;border-radius:9px;margin:0 0 6px;object-fit:cover}
+  .mic.on{animation:mpulse 1.2s infinite}
+  @keyframes mpulse{50%{box-shadow:0 0 0 5px var(--accent-soft)}}
+  .mic-level{width:52px;height:22px;display:flex;align-items:center;justify-content:center;gap:2px;border-radius:999px;background:var(--accent-soft);opacity:0;transform:translateY(0) scaleX(.72);transform-origin:left center;transition:opacity .16s,transform .16s;pointer-events:none;overflow:hidden;flex:none}
+  .mic-level.on{opacity:1;transform:translateY(var(--lift,0px)) scaleX(var(--wide,1))}
+  .mic-level i{display:block;width:3px;height:4px;border-radius:3px;background:var(--accent);transition:height .07s ease-out,opacity .07s ease-out}
+
+  /* ---------- SETTINGS ---------- */
+  .panel{max-width:920px;margin:0 auto;padding:30px 24px 70px;width:100%}
+  .panel h1{font-size:28px;margin:0 0 5px;letter-spacing:-.025em}
+  .lead{color:var(--muted);margin:0 0 20px;font-size:13px}
+  .cats{display:flex;flex-wrap:wrap;gap:6px;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--border)}
+  .cat{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:999px;padding:6px 11px;font-size:11.5px;cursor:pointer}
+  .cat:hover{color:var(--text);border-color:var(--accent)}
+  .cat.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+  @keyframes reveal{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:18px 20px;margin-bottom:14px;scroll-margin-top:14px}
+  .card.show{animation:reveal .18s ease both}
+  .card.hide{display:none}
+  .card h3{font-size:16px;margin:0 0 4px;letter-spacing:-.01em}
+  .card .desc{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 0;border-top:1px solid var(--border)}
+  .row:first-of-type{border-top:0}
+  .row b{font-size:13px;font-weight:600}
+  .row small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  .theme-btn{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:8px;padding:7px 13px;font-size:12.5px;cursor:pointer}
+  .theme-btn:hover{color:var(--text);border-color:var(--accent)}
+  .theme-btn.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+  .toggle{width:38px;height:21px;border-radius:99px;background:var(--border);position:relative;cursor:pointer;border:0;flex:none;transition:background .15s}
+  .toggle i{position:absolute;top:3px;left:3px;width:15px;height:15px;border-radius:50%;background:#fff;transition:left .15s}
+  .toggle.on{background:var(--accent)}.toggle.on i{left:20px}
+  .sw{width:25px;height:25px;border-radius:50%;cursor:pointer;border:2px solid transparent;display:inline-block}
+  .sw.sel{border-color:var(--text);box-shadow:0 0 0 2px var(--panel) inset}
+  .chip{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:999px;padding:4px 9px;font-size:11px;white-space:nowrap}
+  .chip.acc{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .er{display:grid;grid-template-columns:minmax(180px,1fr) minmax(110px,1fr);gap:3px 14px;padding:9px 0;border-top:1px solid var(--border);align-items:start}
+  .er:first-of-type{border-top:0}
+  .er code{font:12px ui-monospace,Consolas,monospace;color:var(--accent);font-weight:600;word-break:break-all}
+  .er .def{font:12px ui-monospace,Consolas,monospace;color:var(--muted);text-align:right;word-break:break-all}
+  .er small{grid-column:1/-1;color:var(--muted);font-size:12px;line-height:1.45}
+  .btn{border:1px solid var(--border);background:transparent;color:var(--text);border-radius:8px;padding:8px 13px;cursor:pointer;font-size:12.5px}
+  .btn:hover{border-color:var(--accent)}
+  .btn.acc{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:600}
+  .btn.danger:hover{border-color:#c4544d;color:#c4544d}
+  .live-tools{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+  .live-list{border-top:1px solid var(--border);margin-top:6px}
+  .live-row,.group-head{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border)}
+  .group-head{background:var(--bg);padding:8px 10px;border-radius:8px;border-bottom:1px solid var(--border);margin-top:8px}
+  .live-main{flex:1;min-width:0}
+  .live-main b{display:block;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-main small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .live-row .toggle,.group-head .toggle{flex:none}
+  .icon-btn{width:28px;height:28px;border-radius:7px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center;flex:none;font-size:15px;line-height:1}
+  .icon-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .icon-btn.danger:hover{border-color:#c4544d;color:#c4544d}
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:12px}
+  .form-grid input,.form-grid select,.form-grid textarea{width:100%;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12px;outline:0;font-family:inherit}
+  .form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus{border-color:var(--accent)}
+  .form-grid textarea{resize:vertical;min-height:56px}
+  .form-actions{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap}
+  .subform{display:none;border-top:1px dashed var(--border);margin-top:12px;padding-top:4px}
+  .subform.open{display:block}
+  .hint{color:var(--muted);font-size:11.5px;line-height:1.5}
+  .chip.warn{border-color:#c99a4e;color:#c99a4e}
+  .chip.bad{border-color:#c4544d;color:#c4544d}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .tags span{font-size:11.5px;color:var(--muted);border:1px solid var(--border);border-radius:7px;padding:5px 9px}
+  .th-in.empty-mode{min-height:100%;display:flex;flex-direction:column;justify-content:flex-end}
+  .empty{max-width:620px;margin:0 auto;padding-bottom:6px;text-align:center;color:var(--muted)}
+  .empty h1{color:var(--text);font-size:30px;margin:0;letter-spacing:.02em;font-weight:600}
+
+  /* ---------- message actions (Claude-style copy / regenerate) ---------- */
+  .msg-user{display:flex;flex-direction:column;align-items:flex-end;margin-bottom:22px}
+  .msg-user .u{margin:0}
+  .msg-acts{display:flex;gap:2px;padding:4px 2px 0;opacity:.42;transition:opacity .15s}
+  .msg-user .msg-acts{justify-content:flex-end}
+  .msg-user:hover .msg-acts,.a:hover .msg-acts,.msg-acts:focus-within{opacity:1}
+  .msg-acts button{width:26px;height:26px;border:0;border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center;padding:0}
+  .msg-acts button:hover,.msg-acts button.ok{background:var(--accent-soft);color:var(--accent)}
+  .msg-acts button svg{width:14px;height:14px;display:block}
+  .a{margin-bottom:22px}
+
+  @keyframes softin{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+<div id="chatApp">
+<div class="app">
+  <aside class="side" id="side">
+    <div class="side-head">
+      <div class="brand">
+        <svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/></svg>
+        <b id="brandName">Claude</b>
+      </div>
+      <button class="hide" title="Hide sidebar">«</button>
+    </div>
+    <button class="newchat"><span class="ico">＋</span> New chat</button>
+
+    <div class="s-item" id="setItem">
+      <span class="ico">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.54 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.54a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.1 4.7a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.46 9c.1.4.46.7.87.7H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1.3z"/></svg>
+      </span>
+      Settings
+    </div>
+
+    <!-- Real chats: /api/conversations se load hote hain. Koi fabricated history nahi. -->
+    <div class="sec" id="chatSec" style="display:none">Chat history</div>
+    <div id="chatList"></div>
+    <div class="side-foot"><span class="dot"></span> <span id="footText">Connecting…</span></div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <button class="menu" title="Toggle sidebar">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="top-title" id="topTitle">New chat</div>
+    </div>
+
+    <!-- CHAT -->
+    <div class="view on" id="v-chat">
+      <div class="thread" id="thread">
+        <div class="th-in empty-mode" id="thIn">
+          <div class="empty"><h1 id="emptyName">Claude</h1></div>
+        </div>
+      </div>
+      <div class="comp-wrap">
+        <div class="comp">
+          <div class="attachments" id="attachments"></div>
+          <textarea id="inp" rows="2" placeholder="Message Claude…"></textarea>
+          <input type="file" id="fileInput" multiple hidden />
+          <div class="crow">
+            <button class="plus" id="plusBtn" title="Attach files">＋</button>
+            <button class="mic" id="micBtn" title="Speak">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/></svg>
+            </button>
+            <div class="mic-level" id="micLevel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="model-wrap">
+              <button class="model-btn" id="modelBtn"><span id="modelName">auto</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="menu-model" id="modelMenu">
+                <input class="msearch" id="msearch" placeholder="Search models…" />
+                <div class="mnote" id="mnote"></div>
+                <div class="mlist" id="mlist"></div>
+              </div>
+            </div>
+            <button class="send" title="Send">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS: original React dashboard, embedded unchanged -->
+    <div class="view" id="v-settings">
+      <iframe id="dashFrame" class="dash-frame" title="Dashboard"></iframe>
+      <div class="panel">
+        <h1>Settings</h1>
+        <p class="lead">Pooro local router — theme, keys, providers, models, routing, proxies, limits, sab yahin. Claude Code · local-first.</p>
+        <div class="row" id="connRow" style="border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:18px">
+          <div><b id="connTitle">Local server se connect ho raha hai…</b><small id="connSub">—</small></div>
+          <span class="chip" id="connChip">…</span>
+        </div>
+        <div class="cats" id="cats">
+          <button class="cat on" data-cat="all">All</button>
+          <button class="cat" data-cat="appearance">Appearance</button>
+          <button class="cat" data-cat="server">Server</button>
+          <button class="cat" data-cat="security">Security</button>
+          <button class="cat" data-cat="limits">Rate limits</button>
+          <button class="cat" data-cat="routing">Routing</button>
+          <button class="cat" data-cat="proxy">Proxies</button>
+          <button class="cat" data-cat="media">Media</button>
+          <button class="cat" data-cat="cache">Cache</button>
+          <button class="cat" data-cat="logs">Logs</button>
+          <button class="cat" data-cat="storage">Storage</button>
+          <button class="cat" data-cat="providers">Providers</button>
+          <button class="cat" data-cat="clients">Clients</button>
+          <button class="cat" data-cat="api">API</button>
+          <button class="cat" data-cat="catalog">Catalog</button>
+          <button class="cat" data-cat="about">About</button>
+        </div>
+
+        <div class="card" data-cat="appearance">
+          <h3>Appearance</h3>
+          <p class="desc">Theme yahin se badlein — chat interface me theme ka option nahi hai.</p>
+          <div class="row"><div><b>Theme</b><small>System / Light / Dark · default Dark</small></div>
+            <div style="display:flex;gap:6px">
+              <button class="theme-btn" data-m="system">System</button>
+              <button class="theme-btn" data-m="light">Light</button>
+              <button class="theme-btn on" data-m="dark">Dark</button>
+            </div>
+          </div>
+          <div class="row"><div><b>Font</b><small>Helvetica Neue · Helvetica · Inter · Arial</small></div><span class="chip">Applied everywhere</span></div>
+          <div class="row"><div><b>Accent color</b><small>Terracotta default</small></div><div>
+            <span class="sw sel" style="background:#d97757" data-a="#d97757" data-b="#e88a6b" data-c="#3a2a22"></span>
+            <span class="sw" style="background:#ba5b3c" data-a="#ba5b3c" data-b="#a44d31" data-c="#f7ece6"></span>
+            <span class="sw" style="background:#2f6f8f" data-a="#2f6f8f" data-b="#245873" data-c="#e6f0f4"></span>
+            <span class="sw" style="background:#3f7a5a" data-a="#3f7a5a" data-b="#2f6046" data-c="#e7f2ea"></span>
+          </div></div>
+          <div class="row"><div><b>Compact sidebar</b><small>Zyada chats ek screen me</small></div><button class="toggle"><i></i></button></div>
+          <div class="row"><div><b>Reduced motion</b><small>Animations kam karein</small></div><button class="toggle"><i></i></button></div>
+        </div>
+
+        <div class="card" data-cat="server">
+          <h3>Server &amp; binding</h3>
+          <p class="desc">Server kis port/interface par chalega aur kaun call kar sakta hai.</p>
+          <div class="er"><code>PORT</code><span class="def">3001</span><small>Server port. Desktop app 31415 par chal sakta hai.</small></div>
+          <div class="er"><code>HOST</code><span class="def">:: (dual-stack)</span><small>Network interface. IPv6 band ho to IPv4 par auto fallback. 127.0.0.1 = sirf localhost.</small></div>
+          <div class="er"><code>HOST_BIND</code><span class="def">127.0.0.1</span><small>Docker only: container port kis host interface par publish hota hai. 0.0.0.0 = LAN (trusted network par hi).</small></div>
+          <div class="er"><code>DASHBOARD_ORIGINS</code><span class="def">localhost:5173, 127.0.0.1:5173, [::1]:5173</span><small>Browser se API call karne wale extra origins. Tabhi jab dashboard alag host se serve ho.</small></div>
+          <div class="er"><code>CSP_UPGRADE_INSECURE_REQUESTS</code><span class="def">Auto (unset)</span><small>CSP upgrade-insecure-requests directive. TLS/reverse proxy par auto; true = force on, false = force off.</small></div>
+          <div class="er"><code>TRUST_PROXY</code><span class="def">false</span><small>Forwarded headers (X-Forwarded-For / Proto) trust karein. false / true / hop count (1) / IP-CIDR list.</small></div>
+        </div>
+
+        <div class="card" data-cat="security">
+          <h3>Security &amp; encryption</h3>
+          <p class="desc">Keys encrypt hoti hain, sab aapke computer par.</p>
+          <div class="row"><div><b>Encryption key</b><small>AES-256-GCM · 64-char hex</small></div><span class="chip acc">Configured ✓</span></div>
+          <div class="er"><code>ENCRYPTION_KEY</code><span class="def">auto-generated file (non-prod)</span><small>API key storage encryption. Precedence: env var → .encryption-key file → legacy key → nayi key.</small></div>
+          <div class="er"><code>FREEAPI_BLOCK_PRIVATE_PROVIDER_URLS</code><span class="def">unset (off)</span><small>Custom provider URL policy. Cloud metadata/link-local hamesha block. true = loopback + private ranges bhi block.</small></div>
+          <div class="er"><code>FREEAPI_DB_DIR_HARDENING</code><span class="def">automatic where safe</span><small>DB folder ko sirf is account tak restrict (-wal/-shm bhi). 1 = force, 0 = off.</small></div>
+          <div class="er"><code>ALLOWED_HOSTS</code><span class="def">unset (off)</span><small>Host-header allowlist against DNS rebinding. Loopback hamesha allowed. unset ya * = check off.</small></div>
+          <div class="row"><div><b>LAN access</b><small>Sirf ye computer / trusted network</small></div><button class="toggle"><i></i></button></div>
+          <div class="row"><div><b>Catalog sync</b><small>freellmapi.co se signed model list (2x daily)</small></div><button class="toggle on"><i></i></button></div>
+        </div>
+
+        <div class="card settings-live" data-cat="security" id="unifiedCard">
+          <h3>Unified API key</h3>
+          <p class="desc">Ye key aapke OpenAI-compatible clients aur mic transcription use karte hain. Regenerate karne par purana key kaam karna band kar dega.</p>
+          <div class="row"><div><b>Inference key</b><small id="unifiedKeyText">Loading…</small></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="btn" id="revealUnifiedBtn" type="button">Show</button>
+              <button class="btn" id="copyUnifiedBtn" type="button">Copy</button>
+              <button class="btn danger" id="regenerateUnifiedBtn" type="button">Regenerate</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" data-cat="limits">
+          <h3>Rate limits</h3>
+          <p class="desc">Per-IP flood guard. 0 = disable.</p>
+          <div class="er"><code>PROXY_RATE_LIMIT_RPM</code><span class="def">120</span><small>/v1 proxy requests per minute, per client IP. Login/key export ke apne alag caps hain.</small></div>
+          <div class="er"><code>ADMIN_RATE_LIMIT_RPM</code><span class="def">600</span><small>/api dashboard requests per minute, per client IP. TRUST_PROXY set ho to real IP use hota hai.</small></div>
+        </div>
+
+        <div class="card settings-live" data-cat="routing" id="modelsCard">
+          <h3>Models &amp; fallback chain</h3>
+          <p class="desc">Aapki real model list — enable/disable, delete aur enable all/disable all seedha local router par lagte hain.</p>
+          <div class="live-tools">
+            <button class="btn acc" id="enableAllBtn" type="button">Enable all</button>
+            <button class="btn" id="disableAllBtn" type="button">Disable all</button>
+            <button class="btn" id="refreshModelsBtn" type="button">Refresh</button>
+          </div>
+          <div class="form-grid">
+            <select id="routingStrategy" aria-label="Routing strategy">
+              <option value="priority">priority</option>
+              <option value="balanced">balanced</option>
+              <option value="smartest">smartest</option>
+              <option value="fastest">fastest</option>
+              <option value="reliable">reliable</option>
+              <option value="custom">custom</option>
+              <option value="decision">decision</option>
+            </select>
+            <button class="btn" id="saveStrategyBtn" type="button">Save strategy</button>
+            <input id="modelSearch" type="search" placeholder="Search models…" />
+          </div>
+          <div class="live-list" id="modelRows"><div class="row"><div><b>Loading…</b><small>Server se model list aa rahi hai</small></div></div></div>
+        </div>
+
+        <div class="card" data-cat="routing">
+          <h3>Routing timeouts &amp; failover details</h3>
+          <p class="desc">Advanced environment settings. Fallback chain upar se neeche try hoti hai.</p>
+          <div class="er"><code>MODEL_ROUTING_OVERRIDES</code><span class="def">unset</span><small>JSON model id → 0..2 score multiplier. 1 = unchanged, &lt;1 demote, &gt;1 promote, 0 = auto router never picks.</small></div>
+          <div class="er"><code>PROVIDER_TIMEOUT_&lt;PLATFORM&gt;</code><span class="def">60s most · 180s NVIDIA · 120s Ollama/Custom</span><small>Per-provider HTTP timeout (ms). Streaming me FIRST-BYTE grace budget bhi. 0 = off.</small></div>
+          <div class="er"><code>PROVIDER_STREAM_STALL_TIMEOUT_MS</code><span class="def">90000</span><small>Mid-stream inactivity timeout (ms). First byte ke baad itni chup = failover/error. 0 = off.</small></div>
+          <div class="er"><code>PROVIDER_STREAM_STALL_TIMEOUT_&lt;PLATFORM&gt;</code><span class="def">global → 90000</span><small>Per-provider variant. Precedence: per-platform &gt; global &gt; built-in 90s.</small></div>
+          <div class="er"><code>PROVIDER_DAILY_REQUEST_CAP_&lt;PLATFORM&gt;</code><span class="def">built-in per provider</span><small>Per-provider daily cap. 0 = cap off. Example PROVIDER_DAILY_REQUEST_CAP_OPENROUTER=50.</small></div>
+          <div class="er"><code>CLOUDFLARE_DAILY_NEURON_CAP</code><span class="def">9000</span><small>Workers AI daily neuron cap per account (free 10,000 ke neeche). 0 = off.</small></div>
+          <div class="er"><code>CLOUDFLARE_NEURON_ANALYTICS</code><span class="def">1</span><small>Cloudflare ka apna neuron count bhi fetch karke higher value use karein. 0 = off.</small></div>
+          <div class="er"><code>STREAM_KEEPALIVE_MS</code><span class="def">0 (off)</span><small>SSE heartbeat (ms) for reasoning models. Floor 1000ms.</small></div>
+          <div class="er"><code>LLMTR_VALIDATION_MIN_GAP_MS</code><span class="def">2000</span><small>Key-validation probes ke beech gap (ms). 0 = pacing off. Chat traffic kabhi paced nahi.</small></div>
+          <div class="er"><code>FALLBACK_TIME_BUDGET_MS</code><span class="def">45000</span><small>Failover wall-clock budget (ms). Initial + 1 hop hamesha allowed. 0 = budget off.</small></div>
+          <div class="er"><code>SLOW_ENDPOINT_BUFFER_MS</code><span class="def">10000</span><small>P95 TTFB ke upar padding (ms). Effective = max(base, P95+buffer), cap 3x base.</small></div>
+          <div class="er"><code>TTFB_BUDGET_WINDOW_MS</code><span class="def">604800000 (7d)</span><small>Successful TTFB samples ka rolling window.</small></div>
+          <div class="er"><code>TTFB_BUDGET_HALF_LIFE_MS</code><span class="def">172800000 (2d)</span><small>Purane samples kam weight. Adaptive off = TTFB_BUDGET_DISABLED=1.</small></div>
+          <div class="er"><code>TTFB_BUDGET_MIN_SAMPLES</code><span class="def">5</span><small>Budget widen karne se pehle zaroori successful samples.</small></div>
+          <div class="er"><code>TTFB_BUDGET_DISABLED</code><span class="def">off</span><small>1 = adaptive TTFB off, sirf base budget.</small></div>
+          <div class="er"><code>FALLBACK_DETAIL_HEADER</code><span class="def">off</span><small>1 = X-Fallback-Detail header (hop cost + provider error text).</small></div>
+          <div class="er"><code>VALIDATE_TOOL_ARGUMENTS</code><span class="def">off (=1 enable)</span><small>Tool-call arguments schema se check, violate pe failover.</small></div>
+          <div class="er"><code>REQUEST_MAX_TOKENS_BUDGET</code><span class="def">0 (off)</span><small>Per-request token guardrail. Limit se upar = 413 before provider.</small></div>
+          <div class="er"><code>MAX_CONSECUTIVE_UPSTREAM_FAILS</code><span class="def">0 (off)</span><small>Failover circuit breaker. Itne fails ke baad 503.</small></div>
+          <div class="er"><code>HEALTH_TRANSPORT_PARK_AFTER</code><span class="def">0 (off)</span><small>Network errors par key park (suggested 6 ≈ 30 min). 0 = keep trying.</small></div>
+          <div class="er"><code>HEALTH_CHECK_INTERVAL_MS</code><span class="def">300000 (5 min)</span><small>Key-health pass cadence (±20% jitter). Min 60000.</small></div>
+          <div class="er"><code>MODELSCOPE_VALIDATE_CACHE_MS</code><span class="def">86400000 (24h)</span><small>ModelScope paid validation cache. 0 = har pass par probe.</small></div>
+          <div class="er"><code>MODEL_PROBE_ENABLED</code><span class="def">off</span><small>1 = har 30 min me chhota "Reply with OK" probe (quota kharch).</small></div>
+          <div class="er"><code>BUDGET_ALERT_WEBHOOK_URL</code><span class="def">unset</span><small>Key 80%/100% cap cross pe JSON alert POST (Slack/Discord). http(s) only.</small></div>
+          <div class="er"><code>FREELLMAPI_CONTEXT_HANDOFF</code><span class="def">off</span><small>on_model_switch = model change par compact system message inject.</small></div>
+        </div>
+
+        <div class="card" data-cat="proxy">
+          <h3>Outbound proxies</h3>
+          <p class="desc">Precedence: PROXY_URL → dashboard → ALL_PROXY → HTTPS_PROXY → HTTP_PROXY → system → direct.</p>
+          <div class="er"><code>PROXY_MODE</code><span class="def">forward</span><small>forward (HTTP/SOCKS) ya fetch-relay. fetch-relay me URL https hona chahiye.</small></div>
+          <div class="er"><code>PROXY_URL</code><span class="def">unset</span><small>Outbound proxy. Schemes: http, https, socks4, socks4a, socks5, socks5h.</small></div>
+          <div class="er"><code>FETCH_RELAY_TOKEN</code><span class="def">unset (unauthenticated)</span><small>Relay bearer credential. Dashboard se save karne par encrypt; env var DB me nahi jata.</small></div>
+          <div class="er"><code>ALL_PROXY / HTTPS_PROXY / HTTP_PROXY</code><span class="def">unset</span><small>Standard proxy variables (lower-case bhi). NO_PROXY se bypass.</small></div>
+          <div class="er"><code>NO_PROXY</code><span class="def">unset</span><small>Direct reach wale hosts. Bare domain = subdomains; * = proxy off.</small></div>
+          <div class="er"><code>PROXY_REQUIRED_PLATFORMS</code><span class="def">unset</span><small>Fail-closed: listed platforms ko proxy zaroori, warna explicit error.</small></div>
+          <div class="er"><code>FREEAPI_PROXY_LOCAL_DESTINATIONS</code><span class="def">false</span><small>true = localhost/LAN (Ollama, LM Studio) bhi proxy se. Default me bypass.</small></div>
+        </div>
+
+        <div class="card" data-cat="media">
+          <h3>Request body &amp; media limits</h3>
+          <p class="desc">Vision/images ke payload handling.</p>
+          <div class="er"><code>REQUEST_BODY_LIMIT_MB</code><span class="def">25</span><small>JSON body limit (MB) for /v1, /v1beta, /mcp, Ollama. 413 par badayein.</small></div>
+          <div class="er"><code>MCP_INFERENCE_DEFAULT_MODEL</code><span class="def">auto</span><small>ask_freellmapi ka default model/chain. Example auto:coding.</small></div>
+          <div class="er"><code>MCP_INFERENCE_TIMEOUT_MS</code><span class="def">120000</span><small>ask_freellmapi timeout (1,000–300,000 ms). /v1 par asar nahi.</small></div>
+          <div class="er"><code>IMAGE_NORMALIZE</code><span class="def">on</span><small>Data-URL images downscale + re-encode. off = disable. bmp/gif/tiff/webp → jpeg/png.</small></div>
+          <div class="er"><code>IMAGE_NORMALIZE_MAX_DIMENSION</code><span class="def">2048</span><small>Normalized images ka long-edge cap (px).</small></div>
+          <div class="er"><code>IMAGE_NORMALIZE_THRESHOLD_KB</code><span class="def">1024</span><small>Is size se upar images downscale ke liye candidate.</small></div>
+          <div class="er"><code>IMAGE_NORMALIZE_QUALITY</code><span class="def">90</span><small>Re-encode quality.</small></div>
+        </div>
+
+        <div class="card" data-cat="cache">
+          <h3>Response cache &amp; compression</h3>
+          <p class="desc">Identical requests se provider quota bachayein.</p>
+          <div class="row"><div><b>Response cache</b><small>Exact-match LRU · X-FreeLLM-Cache header</small></div><button class="toggle"><i></i></button></div>
+          <div class="er"><code>RESPONSE_CACHE</code><span class="def">false</span><small>Opt-in in-memory LRU. Identical later request memory se, zero provider cost.</small></div>
+          <div class="er"><code>RESPONSE_CACHE_PERSIST</code><span class="def">true</span><small>Cache answers SQLite me (plaintext). false = memory-only.</small></div>
+          <div class="er"><code>RESPONSE_CACHE_TTL_SECONDS</code><span class="def">3600 (1h)</span><small>Cached answer freshness.</small></div>
+          <div class="er"><code>RESPONSE_CACHE_MAX_TEMPERATURE</code><span class="def">1.0</span><small>Is se upar cache nahi. 0.2 = near-deterministic only.</small></div>
+          <div class="er"><code>RESPONSE_CACHE_MAX_ENTRIES</code><span class="def">5000</span><small>Hard cap. LRU eviction.</small></div>
+          <div class="er"><code>FREELLMAPI_COMPRESSION</code><span class="def">off</span><small>lossless / standard / aggressive. X-FreeLLM-Compress se lower.</small></div>
+          <div class="er"><code>IDEMPOTENCY_TTL_MS</code><span class="def">86400000 (24h)</span><small>Idempotency-Key replay window. Same key+fingerprint = 200 replay; different = 409.</small></div>
+        </div>
+
+        <div class="card" data-cat="logs">
+          <h3>Analytics, logs &amp; retention</h3>
+          <p class="desc">0 = limit disable. Purane rows daily prune.</p>
+          <div class="er"><code>REQUEST_ANALYTICS_RETENTION_DAYS</code><span class="def">90</span><small>Request analytics retention (days).</small></div>
+          <div class="er"><code>REQUEST_ANALYTICS_MAX_ROWS</code><span class="def">100000</span><small>Request analytics row cap.</small></div>
+          <div class="er"><code>REQUEST_ANALYTICS_LOG_CLIENT</code><span class="def">true</span><small>Client IP + User-Agent store. false = nulls.</small></div>
+          <div class="er"><code>SERVER_LOGS_RETENTION_DAYS</code><span class="def">7</span><small>Persisted server logs (warn/error only).</small></div>
+          <div class="er"><code>SERVER_LOGS_MAX_ROWS</code><span class="def">50000</span><small>Server logs row cap.</small></div>
+          <div class="er"><code>QUOTA_OBSERVATIONS_RETENTION_DAYS</code><span class="def">7</span><small>Provider quota audit trail age bound.</small></div>
+          <div class="er"><code>QUOTA_OBSERVATIONS_MAX_ROWS</code><span class="def">50000</span><small>Quota audit trail count bound.</small></div>
+          <div class="er"><code>SEARCH_LOGS_RETENTION_DAYS / MAX_ROWS</code><span class="def">90 / 100000</span><small>Web-search attempt log (Search page).</small></div>
+          <div class="er"><code>DECISION_LOGS_RETENTION_DAYS / MAX_ROWS</code><span class="def">90 / 100000</span><small>Decision-model attempt log (Models → Decision).</small></div>
+        </div>
+
+        <div class="card" data-cat="storage">
+          <h3>Storage, backups, config &amp; updates</h3>
+          <p class="desc">SQLite DB, encrypted backups, declarative startup, update checker.</p>
+          <div class="er"><code>FREEAPI_DB_PATH</code><span class="def">default (next to server)</span><small>SQLite location override. Example /app/server/data/freellmapi.db.</small></div>
+          <div class="er"><code>FREEAPI_DB_BACKUP_PATH / URL / TOKEN / KEY</code><span class="def">unset</span><small>Encrypted SQLite backup (file ya HTTP). KEY omitted = ENCRYPTION_KEY.</small></div>
+          <div class="er"><code>FREEAPI_DB_BACKUP_INTERVAL_MS</code><span class="def">300000 (5 min)</span><small>Background backup interval.</small></div>
+          <div class="er"><code>AUTO_BACKUP_DUMP_RETENTION</code><span class="def">10</span><small>Backups page par auto dumps count. 0 = kabhi delete nahi.</small></div>
+          <div class="er"><code>FREEAPI_CONFIG_PATH / FREEAPI_CONFIG_JSON</code><span class="def">unset</span><small>Declarative startup config (idempotent). Plaintext secrets — protect karein.</small></div>
+          <div class="er"><code>FREELLMAPI_UPDATE_CHECK</code><span class="def">enabled</span><small>off = update checker hide + outbound check nahi.</small></div>
+          <div class="er"><code>FREELLMAPI_UPDATE_GITHUB_TOKEN</code><span class="def">empty (anonymous)</span><small>Update checks ke liye narrowly-scoped token. GITHUB_TOKEN ignore.</small></div>
+          <div class="er"><code>FREELLMAPI_COMMIT_SHA / INSTALL_METHOD</code><span class="def">injected by builds</span><small>Build metadata. .env me set nahi karna.</small></div>
+          <div class="er"><code>CLIENT_DIST / FREEAPI_ENV_PATH</code><span class="def">bundled / ./.env</span><small>Prebuilt client dist; .env load path (desktop app ke liye).</small></div>
+        </div>
+
+        <div class="card settings-live" data-cat="providers" id="keysCard">
+          <h3>Providers &amp; keys</h3>
+          <p class="desc">Aapke real connected providers — seedha aapki local SQLite se. Keys encrypted rehti hain.</p>
+          <div class="live-tools">
+            <button class="btn acc" id="checkAllBtn" type="button">Check all</button>
+            <button class="btn" id="refreshKeysBtn" type="button">Refresh</button>
+            <button class="btn" id="toggleCustomForm" type="button">＋ Custom endpoint</button>
+          </div>
+          <div class="live-list" id="settingsProviderRows"><div class="row"><div><b>Loading…</b><small>Server se data aa raha hai</small></div></div></div>
+          <div class="form-grid">
+            <select id="newKeyPlatform" aria-label="Provider"></select>
+            <input id="newKeyLabel" type="text" placeholder="Label (optional)" />
+            <input id="newKeyValue" type="text" placeholder="API key" autocomplete="off" />
+          </div>
+          <div class="form-actions">
+            <button class="btn acc" id="addKeyBtn" type="button">Add key</button>
+            <span class="hint" id="keyFormHint">Keyless provider ke liye key khoda chhod sakte hain.</span>
+          </div>
+          <div class="subform" id="customKeyForm">
+            <div class="form-grid">
+              <select id="customType" aria-label="Custom endpoint type">
+                <option value="chat">Chat model</option>
+                <option value="embedding">Embedding</option>
+                <option value="image">Image</option>
+                <option value="audio">Audio / speech</option>
+                <option value="transcription">Transcription</option>
+                <option value="search">Search</option>
+                <option value="decision">Decision</option>
+              </select>
+              <input id="customBaseUrl" type="url" placeholder="https://host/v1" />
+              <input id="customLabel" type="text" placeholder="Display name (optional)" />
+              <input id="customApiKey" type="text" placeholder="API key (optional)" autocomplete="off" />
+              <textarea id="customModels" rows="2" placeholder="model-id, second-model"></textarea>
+            </div>
+            <div class="form-actions"><button class="btn acc" id="addCustomBtn" type="button">Add custom provider</button></div>
+          </div>
+          <div class="tags" id="settingsProviderTags"></div>
+        </div>
+
+        <div class="card" data-cat="clients">
+          <h3>Clients &amp; coding agents</h3>
+          <p class="desc">Ek command se setup: npx freellmapi setup-claude --url http://localhost:3001 --api-key &lt;key&gt;</p>
+          <div class="tags">
+            <span>Claude Code</span><span>Codex CLI</span><span>Gemini CLI</span><span>Cursor</span><span>Cline</span><span>Roo Code</span>
+            <span>OpenCode</span><span>Aider</span><span>Continue</span><span>Goose</span><span>Qwen Code</span><span>Kilo Code</span>
+            <span>Crush</span><span>Zed</span><span>JetBrains AI</span><span>DeepSeek Harness</span><span>MiMo Code</span><span>AtomCode</span>
+            <span>OpenClaw</span><span>Hermes Agent</span><span>Pi</span><span>Reasonix</span><span>ZCode</span><span>QwenPaw</span>
+            <span>ChatGPT (MCP tunnel)</span><span>MCP server</span><span>Ollama clients</span>
+          </div>
+        </div>
+
+        <div class="card" data-cat="api">
+          <h3>API surfaces &amp; features</h3>
+          <p class="desc">Sab OpenAI-compatible · streaming + non-streaming.</p>
+          <div class="tags">
+            <span>/v1/chat/completions</span><span>/v1/responses</span><span>/v1/completions</span><span>/v1/messages (Anthropic)</span>
+            <span>/v1beta (Gemini)</span><span>/v1/images/generations</span><span>/v1/videos/generations</span><span>/v1/audio/speech</span>
+            <span>/v1/audio/transcriptions</span><span>/v1/embeddings</span><span>/v1/models</span><span>/mcp</span><span>/v1/docs</span>
+            <span>fusion (multi-model)</span><span>tool calling</span><span>structured outputs</span><span>sticky sessions</span>
+          </div>
+        </div>
+
+        <div class="card" data-cat="catalog">
+          <h3>Dashboard, catalog &amp; real limits</h3>
+          <p class="desc">Repo aur dashboard me maujood cheezein — koi fabricated data nahi.</p>
+          <div class="row"><div><b>Dashboard pages</b><small>Keys · Models · Playground · Analytics · Logs · Backups · Search · Decision · Premium · Settings</small></div><span class="chip">10 pages</span></div>
+          <div class="row"><div><b>Model catalog</b><small>Signed catalog 2x daily · free tier 30-day age gate · user models never overwritten</small></div><span class="chip acc">auto-sync</span></div>
+          <div class="row"><div><b>Named chains</b><small>auto:&lt;profile&gt; · coding chain · vision chain · sticky sessions 30 min</small></div><span class="chip">profiles</span></div>
+          <div class="row"><div><b>Failover attempts</b><small>Up to 20 attempts within wall-clock budget · UTC midnight cap reset</small></div><span class="chip">20 hops</span></div>
+          <div class="row"><div><b>Interface languages</b><small>60 languages in dashboard</small></div><span class="chip">60</span></div>
+          <div class="er"><code>Desktop app</code><span class="def">tray + glass popover</span><small>Open Dashboard se hidden local account se auto sign-in. Logs: &lt;data dir&gt;/logs/freeapi.log. Data: %APPDATA%\FreeLLMAPI\.</small></div>
+          <div class="er"><code>Limitations</code><span class="def">no SLA</span><small>Free tiers: variable latency, no sustained frontier access, intelligence dips late day as top models hit caps — resets at UTC midnight.</small></div>
+        </div>
+
+        <div class="card" data-cat="about">
+          <h3>About</h3>
+          <p class="desc">Claude Code — aapka local-first LLM router. Local-first, single-user, MIT.</p>
+          <div class="row"><div><b>Default endpoint</b><small>http://127.0.0.1:3001/v1 (desktop: 31415)</small></div><span class="chip" id="aboutStatus">connecting</span></div>
+          <div class="row"><div><b>Interface</b><small>Helvetica · warm dark theme</small></div><span class="chip acc">Claude Code</span></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
+

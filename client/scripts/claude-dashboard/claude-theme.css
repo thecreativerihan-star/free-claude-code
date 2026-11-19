@@ -1,0 +1,55 @@
+/* Claude dashboard theme for the embedded original dashboard.
+   ONLY colours + font are remapped to match the outer Claude dashboard.
+   No layout, options, labels, providers or functionality are changed. */
+
+html.dark {
+  --background: #1f1f1f;
+  --foreground: #f2f0ec;
+  --card: #2a2a29;
+  --card-foreground: #f2f0ec;
+  --popover: #2a2a29;
+  --popover-foreground: #f2f0ec;
+  --primary: #d97757;
+  --primary-foreground: #1f1f1f;
+  --secondary: #30302e;
+  --secondary-foreground: #f2f0ec;
+  --muted: #262625;
+  --muted-foreground: #a3a09b;
+  --accent: #3a2a22;
+  --accent-foreground: #f2f0ec;
+  --destructive: #c4544d;
+  --border: #3b3b38;
+  --input: #3b3b38;
+  --ring: #d97757;
+  --chart-1: #d97757;
+  --chart-2: #e88a6b;
+  --chart-3: #7fbf9a;
+  --chart-4: #a3a09b;
+  --chart-5: #6b6864;
+  --sidebar: #262625;
+  --sidebar-foreground: #f2f0ec;
+  --sidebar-primary: #d97757;
+  --sidebar-primary-foreground: #1f1f1f;
+  --sidebar-accent: #3a2a22;
+  --sidebar-accent-foreground: #f2f0ec;
+  --sidebar-border: #3b3b38;
+  --sidebar-ring: #d97757;
+}
+
+html.dark body {
+  background: #1f1f1f !important;
+  color: #f2f0ec;
+  font-family: 'Helvetica Neue', Helvetica, Inter, Arial, sans-serif !important;
+}
+
+/* One chat surface only: the embedded dashboard's duplicate Playground chat
+   is hidden from the nav and the command palette. The main Claude chat box
+   remains the single place to talk to the models. */
+html.dark a[href="/playground"],
+html.dark #cmd-p-playground { display: none !important; }
+
+/* Slim scrollbars, same feel as the outer dashboard */
+html.dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+html.dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.20); border-radius: 8px; }
+html.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.34); }
+html.dark ::-webkit-scrollbar-track { background: transparent; }

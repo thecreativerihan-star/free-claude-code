@@ -1,0 +1,36 @@
+# Windows-only packaging for the Free Claude Code build.
+# Produces: ClaudeCode-Setup-<version>.exe and Claude Code-Portable-<version>.zip
+appId: com.claudecode.desktop
+productName: Claude Code
+directories:
+  output: dist-electron
+files:
+  - build/**/*
+  - renderer/**/*
+  - assets/**/*
+  - "!**/*.map"
+asar: true
+asarUnpack:
+  - "**/node_modules/@img/**"
+  - "**/node_modules/better-sqlite3/**/*.node"
+  - "**/node_modules/better-sqlite3/build/Release/**"
+extraResources:
+  - from: client-dist
+    to: client-dist
+publish:
+  provider: github
+  owner: thecreativerihan-star
+  repo: free-claude-code
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  icon: assets/appicon_1024.png
+nsis:
+  artifactName: "ClaudeCode-Setup-${version}.${ext}"
+  oneClick: true
+  deleteAppDataOnUninstall: false
